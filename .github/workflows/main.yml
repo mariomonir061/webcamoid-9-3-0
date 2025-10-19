@@ -1,7 +1,6 @@
 name: Compile Webcamoid for Windows (Installer)
 
 on:
-  # هذا يسمح لك بتشغيل العملية يدوياً من صفحة Actions
   workflow_dispatch:
 
 jobs:
@@ -15,14 +14,13 @@ jobs:
     - name: 2. Unzip Source Code & Move (فك الضغط ونقل الملفات)
       # هذا يحل مشكلة المسارات الناتجة عن اسم الملف الطويل
       run: |
-        # نفك ضغط الملف المرفوع. (تأكد من اسم الملف: "webcamoid-9.3.0 (1).zip")
+        # نفك ضغط الملف المرفوع.
         7z x "webcamoid-9.3.0 (1).zip" -oD extracted_source
         
         # ننقل المحتويات إلى مجلد مصدر موحد اسمه 'source'
         Move-Item extracted_source\* source -Force
 
     - name: 3. Set Source Directory Variable (تحديد مجلد الكود)
-      # تحديد مجلد المصدر الموحد للخطوات التالية
       run: echo "SOURCE_DIR=source" >> $GITHUB_ENV 
 
     - name: 4. Setup Qt environment (تثبيت مكتبات Qt)
@@ -34,7 +32,6 @@ jobs:
         arch: 'win64_msvc2019_64'
         
     - name: 5. Configure Build with CMake (إعداد البناء)
-      # تم كتابة الأمر في سطر واحد لحل مشكلة PowerShell وعلامة ^
       run: cmake -B build -S ${{ env.SOURCE_DIR }} -DCMAKE_BUILD_TYPE=Release
         
     - name: 6. Build the Webcamoid Project (بدء الكومبايل)
@@ -48,45 +45,47 @@ jobs:
         # يستخدم windeployqt لتضمين جميع مكتبات Qt الضرورية
         $QT_ROOT\bin\windeployqt.exe out\webcamoid.exe
 
-    - name: 8. Setup Inno Setup (تجهيز أداة إنشاء ملف التثبيت)
-      # تثبيت الأداة التي ستنشئ ملف التثبيت
-      uses: jrsoftware/setup-innosetup@v1
+    - name: 8. Setup Installer Builder (تجهيز أداة إنشاء ملف التثبيت)
+      # **** تم استبدال Inno Setup بأداة WIX toolset المُتاحة ****
+      uses: actions/setup-msbuild@v1 
+      with:
+        msbuild-architecture: x64
+      # يتم تثبيت WiX Toolset تلقائيًا على سيرفرات ويندوز في GitHub
 
-    - name: 9. Create Setup Script (إنشاء ملف إعدادات التغليف)
-      # هذا الكود يحدد كيف سيعمل ملف التثبيت (الاسم، والمكان، والأيقونة)
+    - name: 9. Create MSI Installer Script (إنشاء ملف إعدادات التغليف)
+      # إنشاء ملف (Product.wxs) لـ WiX Toolset
       run: |
         $ScriptContent = @"
-        [Setup]
-        AppName=Webcamoid
-        AppVersion=9.3.0
-        DefaultDirName={pf}\Webcamoid
-        DisableProgramGroupPage=yes
-        OutputDir=InstallerOutput
-        OutputBaseFilename=Webcamoid-Setup-9.3.0
-        SetupIconFile=out\webcamoid.exe
-        Compression=lzma
-        SolidCompression=yes
-        PrivilegesRequired=admin
-        
-        [Files]
-        Source: "out\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
-        
-        [Icons]
-        Name: "{group}\Webcamoid"; Filename: "{app}\webcamoid.exe"
-        Name: "{commondesktop}\Webcamoid"; Filename: "{app}\webcamoid.exe"
-        
-        [Run]
-        Filename: "{app}\webcamoid.exe"; Description: "{cm:LaunchProgram,Webcamoid}"; Flags: nowait postinstall skipifsilent
+        <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+          <Product Id="*" Name="Webcamoid 9.3.0" Language="1033" Version="9.3.0" Manufacturer="Webcamoid Team" UpgradeCode="PUT-YOUR-OWN-GUID-HERE">
+            <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+            <Media Id="1" Cabinet="media1.cab" EmbedCab="yes" />
+            <Directory Id="TARGETDIR" Name="SourceDir">
+              <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLFOLDER" Name="Webcamoid 9.3.0">
+                  <Component Id="ProductComponent" Guid="*">
+                    <File Id="WebcamoidExe" Name="webcamoid.exe" Source="out\webcamoid.exe" KeyPath="yes" Checksum="yes" />
+                  </Component>
+                </Directory>
+              </Directory>
+            </Directory>
+            <Feature Id="ProductFeature" Title="Webcamoid 9.3.0" Level="1">
+              <ComponentRef Id="ProductComponent" />
+            </Feature>
+          </Product>
+        </Wix>
         "@
-        Set-Content -Path "setup.iss" -Value $ScriptContent
+        Set-Content -Path "WebcamoidInstaller.wxs" -Value $ScriptContent
+        
+    - name: 10. Build MSI Installer (بناء ملف التثبيت MSI)
+      # استخدام Candle و Light (أدوات WiX) لإنشاء ملف MSI
+      run: |
+        candle WebcamoidInstaller.wxs
+        light -out WebcamoidSetup.msi WebcamoidInstaller.wixobj
 
-    - name: 10. Build Installer (بناء ملف التثبيت EXE)
-      # تشغيل Inno Setup لإنشاء ملف التثبيت النهائي
-      run: iscc setup.iss
-      
     - name: 11. Upload Installer Artifact (رفع ملف التثبيت النهائي)
-      # رفع ملف التثبيت .exe الذي تم إنشاؤه
+      # رفع ملف التثبيت MSI الذي تم إنشاؤه
       uses: actions/upload-artifact@v4
       with:
-        name: Webcamoid-Installer-EXE
-        path: InstallerOutput/Webcamoid-Setup-9.3.0.exe
+        name: Webcamoid-Installer-MSI
+        path: WebcamoidSetup.msi
