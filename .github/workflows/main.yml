@@ -1,62 +1,19 @@
-name: Compile Webcamoid for Windows (EXE)
+# الخطوة 2: فك الضغط والنقل - يجب أن تكون كما يلي:
+    - name: 2. Unzip Source Code & Move (فك الضغط ونقل الملفات)
+      run: |
+        # نفك ضغط الملف.
+        7z x "webcamoid-9.3.0 (1).zip" -oD extracted_source
+        
+        # ننقل المحتويات إلى مجلد مصدر موحد اسمه 'source'
+        Move-Item extracted_source\* source -Force
 
-on:
-  # هذا يسمح لك بتشغيل العملية يدوياً من صفحة Actions
-  workflow_dispatch:
-
-jobs:
-  build_windows:
-    runs-on: windows-latest  # نستخدم أقوى سيرفر ويندوز متاح
-
-    steps:
-    - name: 1. Checkout code (جلب الكود من GitHub)
-      uses: actions/checkout@v4
-
-    - name: 2. Unzip Source Code (فك ضغط الملف)
-      # قم بتنفيذ هذا الأمر لفك ضغط الملف المضغوط الذي رفعته
-      # 7z x هو أمر لفك ضغط ملفات ZIP على السيرفرات السحابية
-      run: 7z x "webcamoid-9.3.0 (1).zip"
-
+    # الخطوة 3: تحديد مجلد المصدر - يجب أن تكون كما يلي:
     - name: 3. Set Source Directory Variable (تحديد مجلد الكود)
-      # Webcamoid يستخدم CMake، وسنحتاج لتحديد المسار الصحيح
-      run: |
-        # نفترض أن فك الضغط ينتج مجلد بنفس الاسم تقريباً.
-        # قد تحتاج لتغيير هذا الاسم إذا كان مختلفاً قليلاً بعد فك الضغط.
-        echo "SOURCE_DIR=webcamoid-9.3.0" >> $GITHUB_ENV
-        # ملاحظة: إذا كان اسم المجلد الناتج هو "webcamoid-9.3.0 (1)" فعليك تغيير السطر أعلاه
-        
-    - name: 4. Setup Qt environment (تثبيت مكتبات Qt)
-      # نستخدم إصدار Qt 6.5.3 وهو مستقر ويستخدمه Webcamoid
-      uses: jurplel/install-qt-action@v3
-      with:
-        version: '6.5.3'
-        target: 'desktop'
-        host: 'windows'
-        arch: 'win64_msvc2019_64'
-        
-    - name: 5. Configure Build with CMake (إعداد البناء)
-      # يستخدم CMake لتهيئة عملية البناء
-      run: |
-        cmake -B build -S ${{ env.SOURCE_DIR }} ^
-        -DCMAKE_BUILD_TYPE=Release
-        
-    - name: 6. Build the Webcamoid Project (بدء الكومبايل)
-      # يبدأ الكومبايل باستخدام جميع أنوية المعالج السحابي
-      run: cmake --build build --config Release
-      
-    - name: 7. Deploy/Package the Application (تجميع ملفات التشغيل)
-      # يستخدم أداة Qt الرسمية لجمع ملف EXE مع كل ملفات DLL المطلوبة
-      run: |
-        # ينسخ الملفات من مجلد البناء إلى مجلد الإخراج
-        mkdir out
-        copy build\release\webcamoid.exe out\webcamoid.exe
-        
-        # يستخدم windeployqt لتضمين جميع مكتبات Qt الضرورية
-        $QT_ROOT\bin\windeployqt.exe out\webcamoid.exe
+      run: echo "SOURCE_DIR=source" >> $GITHUB_ENV 
 
-    - name: 8. Upload Artifact (رفع الملف التنفيذي النهائي)
-      # يقوم بحزم المجلد "out" ورفعه لك على GitHub كملف ZIP
-      uses: actions/upload-artifact@v4
-      with:
-        name: Webcamoid-9.3.0-Windows-EXE
-        path: out/
+    # ... (تجاهل الخطوة 4، يجب أن تكون صحيحة) ...
+
+    # الخطوة 5: إعداد البناء - نكتبها في سطر واحد لتجنب خطأ PowerShell
+    - name: 5. Configure Build with CMake (إعداد البناء)
+      # نكتب الأمر بالكامل في سطر واحد لتجنب مشاكل علامة ^
+      run: cmake -B build -S ${{ env.SOURCE_DIR }} -DCMAKE_BUILD_TYPE=Release
