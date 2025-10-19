@@ -1,19 +1,92 @@
-# الخطوة 2: فك الضغط والنقل - يجب أن تكون كما يلي:
+name: Compile Webcamoid for Windows (Installer)
+
+on:
+  # هذا يسمح لك بتشغيل العملية يدوياً من صفحة Actions
+  workflow_dispatch:
+
+jobs:
+  build_windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: 1. Checkout code (جلب الكود من GitHub)
+      uses: actions/checkout@v4
+
     - name: 2. Unzip Source Code & Move (فك الضغط ونقل الملفات)
+      # هذا يحل مشكلة المسارات الناتجة عن اسم الملف الطويل
       run: |
-        # نفك ضغط الملف.
+        # نفك ضغط الملف المرفوع. (تأكد من اسم الملف: "webcamoid-9.3.0 (1).zip")
         7z x "webcamoid-9.3.0 (1).zip" -oD extracted_source
         
         # ننقل المحتويات إلى مجلد مصدر موحد اسمه 'source'
         Move-Item extracted_source\* source -Force
 
-    # الخطوة 3: تحديد مجلد المصدر - يجب أن تكون كما يلي:
     - name: 3. Set Source Directory Variable (تحديد مجلد الكود)
+      # تحديد مجلد المصدر الموحد للخطوات التالية
       run: echo "SOURCE_DIR=source" >> $GITHUB_ENV 
 
-    # ... (تجاهل الخطوة 4، يجب أن تكون صحيحة) ...
-
-    # الخطوة 5: إعداد البناء - نكتبها في سطر واحد لتجنب خطأ PowerShell
+    - name: 4. Setup Qt environment (تثبيت مكتبات Qt)
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.5.3'
+        target: 'desktop'
+        host: 'windows'
+        arch: 'win64_msvc2019_64'
+        
     - name: 5. Configure Build with CMake (إعداد البناء)
-      # نكتب الأمر بالكامل في سطر واحد لتجنب مشاكل علامة ^
+      # تم كتابة الأمر في سطر واحد لحل مشكلة PowerShell وعلامة ^
       run: cmake -B build -S ${{ env.SOURCE_DIR }} -DCMAKE_BUILD_TYPE=Release
+        
+    - name: 6. Build the Webcamoid Project (بدء الكومبايل)
+      run: cmake --build build --config Release
+      
+    - name: 7. Deploy/Package the Application (تجميع الملفات لتغليفها)
+      run: |
+        mkdir out
+        copy build\release\webcamoid.exe out\webcamoid.exe
+        
+        # يستخدم windeployqt لتضمين جميع مكتبات Qt الضرورية
+        $QT_ROOT\bin\windeployqt.exe out\webcamoid.exe
+
+    - name: 8. Setup Inno Setup (تجهيز أداة إنشاء ملف التثبيت)
+      # تثبيت الأداة التي ستنشئ ملف التثبيت
+      uses: jrsoftware/setup-innosetup@v1
+
+    - name: 9. Create Setup Script (إنشاء ملف إعدادات التغليف)
+      # هذا الكود يحدد كيف سيعمل ملف التثبيت (الاسم، والمكان، والأيقونة)
+      run: |
+        $ScriptContent = @"
+        [Setup]
+        AppName=Webcamoid
+        AppVersion=9.3.0
+        DefaultDirName={pf}\Webcamoid
+        DisableProgramGroupPage=yes
+        OutputDir=InstallerOutput
+        OutputBaseFilename=Webcamoid-Setup-9.3.0
+        SetupIconFile=out\webcamoid.exe
+        Compression=lzma
+        SolidCompression=yes
+        PrivilegesRequired=admin
+        
+        [Files]
+        Source: "out\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs
+        
+        [Icons]
+        Name: "{group}\Webcamoid"; Filename: "{app}\webcamoid.exe"
+        Name: "{commondesktop}\Webcamoid"; Filename: "{app}\webcamoid.exe"
+        
+        [Run]
+        Filename: "{app}\webcamoid.exe"; Description: "{cm:LaunchProgram,Webcamoid}"; Flags: nowait postinstall skipifsilent
+        "@
+        Set-Content -Path "setup.iss" -Value $ScriptContent
+
+    - name: 10. Build Installer (بناء ملف التثبيت EXE)
+      # تشغيل Inno Setup لإنشاء ملف التثبيت النهائي
+      run: iscc setup.iss
+      
+    - name: 11. Upload Installer Artifact (رفع ملف التثبيت النهائي)
+      # رفع ملف التثبيت .exe الذي تم إنشاؤه
+      uses: actions/upload-artifact@v4
+      with:
+        name: Webcamoid-Installer-EXE
+        path: InstallerOutput/Webcamoid-Setup-9.3.0.exe
